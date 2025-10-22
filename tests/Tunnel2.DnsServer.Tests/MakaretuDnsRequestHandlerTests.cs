@@ -70,8 +70,8 @@ public class MakaretuDnsRequestHandlerTests
         // Create mock ACME tokens provider
         IAcmeTokensProvider acmeTokensProvider = new TestAcmeTokensProvider();
 
-        // Create mock proxy entry repository
-        IProxyEntryRepository proxyEntryRepository = new TestProxyEntryRepository();
+        // Create mock session repository
+        ISessionRepository sessionRepository = new TestSessionRepository();
 
         _handler = new MakaretuDnsRequestHandler(
             logger,
@@ -80,7 +80,7 @@ public class MakaretuDnsRequestHandlerTests
             new OptionsMonitorWrapper<EntryIpAddressMapOptions>(entryIpMapOptions),
             acmeTokensProvider,
             sessionCache,
-            proxyEntryRepository);
+            sessionRepository);
     }
 
     [Fact]
@@ -213,14 +213,24 @@ public class MakaretuDnsRequestHandlerTests
     }
 
     /// <summary>
-    /// Simple test implementation of IProxyEntryRepository.
+    /// Simple test implementation of ISessionRepository.
     /// </summary>
-    private class TestProxyEntryRepository : IProxyEntryRepository
+    private class TestSessionRepository : ISessionRepository
     {
-        public Task<string?> GetIpAddressAsync(Guid proxyEntryId, CancellationToken cancellationToken = default)
+        public Task<Data.Session?> GetByHostnameAsync(string hostname, CancellationToken cancellationToken = default)
         {
-            // Return null (no entries in mock database)
-            return Task.FromResult<string?>(null);
+            // Return null (no sessions in mock database)
+            return Task.FromResult<Data.Session?>(null);
+        }
+
+        public Task UpsertAsync(Data.Session session, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<int> DeleteExpiredSessionsAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(0);
         }
     }
 
