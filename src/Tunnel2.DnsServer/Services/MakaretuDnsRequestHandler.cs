@@ -17,6 +17,7 @@ public sealed class MakaretuDnsRequestHandler
     private readonly IOptionsMonitor<EntryIpAddressMapOptions> _entryIpAddressMapOptionsMonitor;
     private readonly IAcmeTokensProvider _acmeTokensProvider;
     private readonly ISessionIpAddressCache _sessionIpAddressCache;
+    private readonly IProxyEntryRepository _proxyEntryRepository;
     private readonly IDomainPatternMatcher _legacyMatcher;
     private readonly IDomainPatternMatcher _newMatcher;
 
@@ -26,7 +27,8 @@ public sealed class MakaretuDnsRequestHandler
         IOptionsMonitor<LegacyModeOptions> legacyModeOptionsMonitor,
         IOptionsMonitor<EntryIpAddressMapOptions> entryIpAddressMapOptionsMonitor,
         IAcmeTokensProvider acmeTokensProvider,
-        ISessionIpAddressCache sessionIpAddressCache)
+        ISessionIpAddressCache sessionIpAddressCache,
+        IProxyEntryRepository proxyEntryRepository)
     {
         _logger = logger;
         _dnsServerOptionsMonitor = dnsServerOptionsMonitor;
@@ -34,6 +36,7 @@ public sealed class MakaretuDnsRequestHandler
         _entryIpAddressMapOptionsMonitor = entryIpAddressMapOptionsMonitor;
         _acmeTokensProvider = acmeTokensProvider;
         _sessionIpAddressCache = sessionIpAddressCache;
+        _proxyEntryRepository = proxyEntryRepository;
         _legacyMatcher = new LegacyDomainPatternMatcher();
         _newMatcher = new NewDomainPatternMatcher();
     }
@@ -42,6 +45,15 @@ public sealed class MakaretuDnsRequestHandler
     /// Processes a DNS query and returns a response.
     /// </summary>
     public byte[] HandleRequest(byte[] requestData)
+    {
+        // Sync wrapper for async method
+        return HandleRequestAsync(requestData, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Processes a DNS query asynchronously and returns a response.
+    /// </summary>
+    private async Task<byte[]> HandleRequestAsync(byte[] requestData, CancellationToken cancellationToken)
     {
         try
         {
@@ -70,7 +82,7 @@ public sealed class MakaretuDnsRequestHandler
                 switch (question.Type)
                 {
                     case DnsType.A:
-                        HandleARecord(question, response);
+                        await HandleARecordAsync(question, response, cancellationToken);
                         break;
 
                     case DnsType.TXT:
@@ -99,7 +111,7 @@ public sealed class MakaretuDnsRequestHandler
         }
     }
 
-    private void HandleARecord(Question question, Message response)
+    private async Task HandleARecordAsync(Question question, Message response, CancellationToken cancellationToken)
     {
         string hostname = question.Name.ToString().TrimEnd('.');
         DnsServerOptions dnsServerOptions = _dnsServerOptionsMonitor.CurrentValue;
@@ -151,12 +163,37 @@ public sealed class MakaretuDnsRequestHandler
                     return;
                 }
 
-                // Look up IP address for the proxy entry from configuration
-                // TODO: In future, this will query PostgreSQL database
+                // Try to parse ProxyEntryId as GUID for database lookup
+                if (Guid.TryParse(newMatch.ProxyEntryId, out Guid proxyEntryGuid))
+                {
+                    // Query PostgreSQL database
+                    string? ipAddressFromDb = await _proxyEntryRepository.GetIpAddressAsync(proxyEntryGuid, cancellationToken);
+
+                    if (ipAddressFromDb != null)
+                    {
+                        _logger.LogInformation("Resolved IP from database for proxy entry {ProxyEntryId}: {IpAddress}",
+                            newMatch.ProxyEntryId, ipAddressFromDb);
+
+                        // Cache the IP address with sliding expiration
+                        _sessionIpAddressCache.SetIpAddress(sessionKey, ipAddressFromDb);
+
+                        ARecord aRecord = new ARecord
+                        {
+                            Name = question.Name,
+                            Address = IPAddress.Parse(ipAddressFromDb),
+                            TTL = TimeSpan.FromSeconds(dnsServerOptions.ResponseTtlSeconds.NewA)
+                        };
+
+                        response.Answers.Add(aRecord);
+                        return;
+                    }
+                }
+
+                // Fallback to configuration map (for backwards compatibility and testing)
                 EntryIpAddressMapOptions entryIpMapOptions = _entryIpAddressMapOptionsMonitor.CurrentValue;
                 if (entryIpMapOptions.Map.TryGetValue(newMatch.ProxyEntryId, out string? ipAddress) && ipAddress != null)
                 {
-                    _logger.LogInformation("Resolved IP for proxy entry {ProxyEntryId}: {IpAddress}",
+                    _logger.LogInformation("Resolved IP from configuration for proxy entry {ProxyEntryId}: {IpAddress}",
                         newMatch.ProxyEntryId, ipAddress);
 
                     // Cache the IP address with sliding expiration

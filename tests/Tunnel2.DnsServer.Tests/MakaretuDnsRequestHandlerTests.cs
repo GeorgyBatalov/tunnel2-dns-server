@@ -70,13 +70,17 @@ public class MakaretuDnsRequestHandlerTests
         // Create mock ACME tokens provider
         IAcmeTokensProvider acmeTokensProvider = new TestAcmeTokensProvider();
 
+        // Create mock proxy entry repository
+        IProxyEntryRepository proxyEntryRepository = new TestProxyEntryRepository();
+
         _handler = new MakaretuDnsRequestHandler(
             logger,
             new OptionsMonitorWrapper<DnsServerOptions>(dnsServerOptions),
             new OptionsMonitorWrapper<LegacyModeOptions>(legacyModeOptions),
             new OptionsMonitorWrapper<EntryIpAddressMapOptions>(entryIpMapOptions),
             acmeTokensProvider,
-            sessionCache);
+            sessionCache,
+            proxyEntryRepository);
     }
 
     [Fact]
@@ -205,6 +209,18 @@ public class MakaretuDnsRequestHandlerTests
         public TimeSpan GetTtl()
         {
             return TimeSpan.FromMinutes(1);
+        }
+    }
+
+    /// <summary>
+    /// Simple test implementation of IProxyEntryRepository.
+    /// </summary>
+    private class TestProxyEntryRepository : IProxyEntryRepository
+    {
+        public Task<string?> GetIpAddressAsync(Guid proxyEntryId, CancellationToken cancellationToken = default)
+        {
+            // Return null (no entries in mock database)
+            return Task.FromResult<string?>(null);
         }
     }
 

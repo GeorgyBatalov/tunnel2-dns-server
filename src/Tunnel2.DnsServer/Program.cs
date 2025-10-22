@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Tunnel2.DnsServer.Configuration;
+using Tunnel2.DnsServer.Data;
 using Tunnel2.DnsServer.Services;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -10,6 +12,8 @@ builder.Services.Configure<EntryIpAddressMapOptions>(builder.Configuration.GetSe
 builder.Services.Configure<AcmeOptions>(builder.Configuration.GetSection("AcmeOptions"));
 builder.Services.Configure<DnsVaultOptions>(builder.Configuration.GetSection("VaultOptions"));
 builder.Services.Configure<SessionCacheOptions>(builder.Configuration.GetSection("SessionCacheOptions"));
+builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection("DatabaseOptions"));
+builder.Services.Configure<DatabaseVaultOptions>(builder.Configuration.GetSection("DatabaseVaultOptions"));
 
 // Register memory cache
 builder.Services.AddMemoryCache(options =>
@@ -21,10 +25,20 @@ builder.Services.AddMemoryCache(options =>
     options.SizeLimit = cacheOptions.MaxCachedSessions;
 });
 
+// Register database context with connection string provider
+builder.Services.AddSingleton<IConnectionStringProvider, VaultBackedConnectionStringProvider>();
+builder.Services.AddDbContextFactory<DnsServerDbContext>((serviceProvider, options) =>
+{
+    IConnectionStringProvider connectionStringProvider = serviceProvider.GetRequiredService<IConnectionStringProvider>();
+    string connectionString = connectionStringProvider.GetConnectionString();
+    options.UseNpgsql(connectionString);
+});
+
 // Register services
 // Use VaultBackedAcmeTokensProvider which reads from Vault (if enabled) with fallback to appsettings.json
 builder.Services.AddSingleton<IAcmeTokensProvider, VaultBackedAcmeTokensProvider>();
 builder.Services.AddSingleton<ISessionIpAddressCache, SessionIpAddressCache>();
+builder.Services.AddSingleton<IProxyEntryRepository, ProxyEntryRepository>();
 builder.Services.AddSingleton<MakaretuDnsRequestHandler>();
 builder.Services.AddHostedService<UdpDnsListener>();
 
