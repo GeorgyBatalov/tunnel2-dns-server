@@ -235,6 +235,190 @@ export EntryIpAddressMapOptions__Map__e1="203.0.113.10"
 export EntryIpAddressMapOptions__Map__e2="203.0.113.11"
 ```
 
+## ACME Challenge / HashiCorp Vault Integration
+
+Сервер поддерживает TXT-записи для ACME DNS-01 challenge (Let's Encrypt) с возможностью хранения токенов в HashiCorp Vault или локальных настройках.
+
+### Принцип работы
+
+1. **Приоритет источников:** Vault → appsettings.json
+2. **Hot reload:** Изменения в `appsettings.json` применяются без перезапуска (благодаря `IOptionsMonitor`)
+3. **Fallback:** Если Vault недоступен или отключен → используется `appsettings.json`
+4. **Запрос на лету:** При каждом DNS-запросе `_acme-challenge.tunnel4.com` токены читаются из текущей конфигурации
+
+### Конфигурация в appsettings.json
+
+```json
+{
+  "AcmeOptions": {
+    "AcmeChallenge1": "",
+    "AcmeChallenge2": "",
+    "Ttl": "00:01:00"
+  },
+  "VaultOptions": {
+    "Enabled": false,
+    "Address": "",
+    "Token": "",
+    "MountPoint": "secret",
+    "Path": "tunnel/tunnel2-dns/acme/wildcard"
+  }
+}
+```
+
+**Параметры AcmeOptions:**
+- `AcmeChallenge1` — первый ACME challenge токен (строка)
+- `AcmeChallenge2` — второй ACME challenge токен (Let's Encrypt требует 2 для wildcard)
+- `Ttl` — Time-To-Live для TXT записей в формате `TimeSpan` (например, `"00:01:00"` = 1 минута)
+
+**Параметры VaultOptions:**
+- `Enabled` — включить/выключить интеграцию с Vault (по умолчанию `false`)
+- `Address` — адрес Vault сервера (например, `"http://127.0.0.1:8200"`)
+- `Token` — токен аутентификации Vault
+- `MountPoint` — точка монтирования KV v2 (по умолчанию `"secret"`)
+- `Path` — путь к секрету внутри mount point (по умолчанию `"tunnel/tunnel2-dns/acme/wildcard"`)
+
+### Настройка Vault
+
+#### 1. Создание секрета в Vault (KV v2)
+
+```bash
+vault kv put secret/tunnel/tunnel2-dns/acme/wildcard \
+  AcmeChallenge1="6JQ-Ifh_323tKjxD4DrBLZRgCtbZqbEPx_Xg7Jazu-U" \
+  AcmeChallenge2="MWlqf05uyv5KHGO_ZOmVyvUW_sCt0v1PTDrOq7suBHQ" \
+  Ttl="00:01:00"
+```
+
+#### 2. Проверка секрета
+
+```bash
+vault kv get secret/tunnel/tunnel2-dns/acme/wildcard
+```
+
+Вывод:
+```
+====== Data ======
+Key               Value
+---               -----
+AcmeChallenge1    6JQ-Ifh_323tKjxD4DrBLZRgCtbZqbEPx_Xg7Jazu-U
+AcmeChallenge2    MWlqf05uyv5KHGO_ZOmVyvUW_sCt0v1PTDrOq7suBHQ
+Ttl               00:01:00
+```
+
+#### 3. Включение Vault в appsettings.json
+
+```json
+{
+  "VaultOptions": {
+    "Enabled": true,
+    "Address": "http://127.0.0.1:8200",
+    "Token": "hvs.CAESIJ...",
+    "MountPoint": "secret",
+    "Path": "tunnel/tunnel2-dns/acme/wildcard"
+  }
+}
+```
+
+#### 4. Проверка через DNS
+
+```bash
+dig TXT _acme-challenge.tunnel4.com @127.0.0.1
+
+# Ожидаемый ответ (2 TXT записи):
+;; ANSWER SECTION:
+_acme-challenge.tunnel4.com. 60 IN TXT "6JQ-Ifh_323tKjxD4DrBLZRgCtbZqbEPx_Xg7Jazu-U"
+_acme-challenge.tunnel4.com. 60 IN TXT "MWlqf05uyv5KHGO_ZOmVyvUW_sCt0v1PTDrOq7suBHQ"
+```
+
+### Обновление токенов без перезапуска
+
+**Через Vault:**
+```bash
+# Обновить токены в Vault
+vault kv put secret/tunnel/tunnel2-dns/acme/wildcard \
+  AcmeChallenge1="new-token-1" \
+  AcmeChallenge2="new-token-2" \
+  Ttl="00:02:00"
+
+# DNS-сервер автоматически подтянет новые значения при следующем запросе
+```
+
+**Через appsettings.json (если Vault отключен):**
+```bash
+# Отредактировать appsettings.json
+vim appsettings.json
+
+# Изменения применятся автоматически в течение нескольких секунд
+# Перезапуск НЕ требуется благодаря reloadOnChange: true
+```
+
+### Работа в разных окружениях
+
+**Linux/Production (с Vault):**
+```json
+{
+  "VaultOptions": {
+    "Enabled": true,
+    "Address": "https://vault.example.com",
+    "Token": "hvs.CAESIJ..."
+  }
+}
+```
+
+**Windows/Development (без Vault):**
+```json
+{
+  "AcmeOptions": {
+    "AcmeChallenge1": "local-test-token-1",
+    "AcmeChallenge2": "local-test-token-2",
+    "Ttl": "00:01:00"
+  },
+  "VaultOptions": {
+    "Enabled": false
+  }
+}
+```
+
+### Логирование
+
+При запуске с Vault вы увидите:
+```
+info: Tunnel2.DnsServer.Services.VaultBackedAcmeTokensProvider[0]
+      Vault client initialized successfully. Address: http://127.0.0.1:8200
+```
+
+При DNS-запросе:
+```
+info: Tunnel2.DnsServer.Services.VaultBackedAcmeTokensProvider[0]
+      Returning 2 ACME token(s) from Vault
+info: Tunnel2.DnsServer.Services.DnsRequestHandler[0]
+      ACME challenge request for _acme-challenge.tunnel4.com, returning 2 token(s)
+```
+
+При fallback на appsettings.json:
+```
+warn: Tunnel2.DnsServer.Services.VaultBackedAcmeTokensProvider[0]
+      Failed to read ACME tokens from Vault, falling back to appsettings.json
+```
+
+### Формат данных в Vault
+
+**Важно:** Имена полей в Vault должны точно совпадать с именами в коде:
+- `AcmeChallenge1` (не `acme_challenge_1` или `challenge1`)
+- `AcmeChallenge2`
+- `Ttl` (формат TimeSpan: `"HH:MM:SS"` или `"DD.HH:MM:SS"`)
+
+**Пример с разными TTL:**
+```bash
+# 30 секунд
+vault kv put secret/tunnel/tunnel2-dns/acme/wildcard Ttl="00:00:30"
+
+# 5 минут
+vault kv put secret/tunnel/tunnel2-dns/acme/wildcard Ttl="00:05:00"
+
+# 1 час
+vault kv put secret/tunnel/tunnel2-dns/acme/wildcard Ttl="01:00:00"
+```
+
 ## Тестирование
 
 ### Запуск unit-тестов

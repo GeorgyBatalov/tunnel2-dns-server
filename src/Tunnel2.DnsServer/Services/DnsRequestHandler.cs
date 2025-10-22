@@ -16,13 +16,14 @@ public class DnsRequestHandler
     private readonly EntryIpAddressMapOptions _entryIpAddressMapOptions;
     private readonly IDomainPatternMatcher _legacyMatcher;
     private readonly IDomainPatternMatcher _newMatcher;
-    private readonly Dictionary<string, string> _acmeChallengeStore;
+    private readonly IAcmeTokensProvider _acmeTokensProvider;
 
     public DnsRequestHandler(
         ILogger<DnsRequestHandler> logger,
         IOptions<DnsServerOptions> dnsServerOptions,
         IOptions<LegacyModeOptions> legacyModeOptions,
-        IOptions<EntryIpAddressMapOptions> entryIpAddressMapOptions)
+        IOptions<EntryIpAddressMapOptions> entryIpAddressMapOptions,
+        IAcmeTokensProvider acmeTokensProvider)
     {
         _logger = logger;
         _dnsServerOptions = dnsServerOptions.Value;
@@ -30,7 +31,7 @@ public class DnsRequestHandler
         _entryIpAddressMapOptions = entryIpAddressMapOptions.Value;
         _legacyMatcher = new LegacyDomainPatternMatcher();
         _newMatcher = new NewDomainPatternMatcher();
-        _acmeChallengeStore = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _acmeTokensProvider = acmeTokensProvider;
     }
 
     /// <summary>
@@ -137,27 +138,37 @@ public class DnsRequestHandler
 
     private byte[] HandleTxtRecord(DnsPacket request, DnsQuestion question)
     {
-        // Handle ACME challenge records: _acme-challenge.{domain}
-        if (question.Name.StartsWith("_acme-challenge.", StringComparison.OrdinalIgnoreCase))
+        // Handle ACME challenge records: _acme-challenge.tunnel4.com (exact match)
+        if (question.Name.Equals("_acme-challenge.tunnel4.com", StringComparison.OrdinalIgnoreCase))
         {
-            if (_acmeChallengeStore.TryGetValue(question.Name, out string? challengeValue))
+            IEnumerable<string> tokens = _acmeTokensProvider.GetTokens();
+            List<string> tokenList = tokens.ToList();
+
+            if (tokenList.Count > 0)
             {
-                _logger.LogInformation("ACME challenge found for {Name}", question.Name);
+                _logger.LogInformation("ACME challenge request for {Name}, returning {Count} token(s)",
+                    question.Name, tokenList.Count);
 
                 DnsPacket response = CreateResponsePacket(request, isAuthoritative: true);
-                response.Answers.Add(new DnsResourceRecord
+                TimeSpan ttl = _acmeTokensProvider.GetTtl();
+
+                // Add one TXT record per token (Let's Encrypt requires 2 for wildcard)
+                foreach (string token in tokenList)
                 {
-                    Name = question.Name,
-                    Type = 16, // TXT
-                    Class = 1, // IN
-                    Ttl = (uint)_dnsServerOptions.ResponseTtlSeconds.Txt,
-                    Data = challengeValue
-                });
+                    response.Answers.Add(new DnsResourceRecord
+                    {
+                        Name = question.Name,
+                        Type = 16, // TXT
+                        Class = 1, // IN
+                        Ttl = (uint)ttl.TotalSeconds,
+                        Data = token
+                    });
+                }
 
                 return response.BuildResponse();
             }
 
-            _logger.LogDebug("No ACME challenge found for {Name}", question.Name);
+            _logger.LogDebug("No ACME challenge tokens configured for {Name}", question.Name);
         }
 
         // No TXT record found

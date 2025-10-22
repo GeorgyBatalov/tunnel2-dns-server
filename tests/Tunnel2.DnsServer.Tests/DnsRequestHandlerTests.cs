@@ -48,11 +48,32 @@ public class DnsRequestHandlerTests
         ILogger<DnsRequestHandler> logger = LoggerFactory.Create(builder => builder.AddConsole())
             .CreateLogger<DnsRequestHandler>();
 
+        // Create mock ACME tokens provider
+        IAcmeTokensProvider acmeTokensProvider = new TestAcmeTokensProvider();
+
         _handler = new DnsRequestHandler(
             logger,
             Options.Create(_dnsServerOptions),
             Options.Create(_legacyModeOptions),
-            Options.Create(entryIpMapOptions));
+            Options.Create(entryIpMapOptions),
+            acmeTokensProvider);
+    }
+
+    /// <summary>
+    /// Simple test implementation of IAcmeTokensProvider.
+    /// </summary>
+    private class TestAcmeTokensProvider : IAcmeTokensProvider
+    {
+        public IEnumerable<string> GetTokens()
+        {
+            // Return empty by default for tests
+            return Enumerable.Empty<string>();
+        }
+
+        public TimeSpan GetTtl()
+        {
+            return TimeSpan.FromMinutes(1);
+        }
     }
 
     [Fact]
