@@ -11,17 +11,17 @@ namespace Tunnel2.DnsServer.Services;
 public class UdpDnsListener : BackgroundService
 {
     private readonly ILogger<UdpDnsListener> _logger;
-    private readonly DnsServerOptions _dnsServerOptions;
-    private readonly DnsRequestHandler _requestHandler;
+    private readonly IOptionsMonitor<DnsServerOptions> _dnsServerOptionsMonitor;
+    private readonly MakaretuDnsRequestHandler _requestHandler;
     private UdpClient? _udpClient;
 
     public UdpDnsListener(
         ILogger<UdpDnsListener> logger,
-        IOptions<DnsServerOptions> dnsServerOptions,
-        DnsRequestHandler requestHandler)
+        IOptionsMonitor<DnsServerOptions> dnsServerOptionsMonitor,
+        MakaretuDnsRequestHandler requestHandler)
     {
         _logger = logger;
-        _dnsServerOptions = dnsServerOptions.Value;
+        _dnsServerOptionsMonitor = dnsServerOptionsMonitor;
         _requestHandler = requestHandler;
     }
 
@@ -29,14 +29,16 @@ public class UdpDnsListener : BackgroundService
     {
         try
         {
+            DnsServerOptions dnsServerOptions = _dnsServerOptionsMonitor.CurrentValue;
+
             IPEndPoint listenEndpoint = new IPEndPoint(
-                IPAddress.Parse(_dnsServerOptions.ListenIpv4),
-                _dnsServerOptions.UdpPort);
+                IPAddress.Parse(dnsServerOptions.ListenIpv4),
+                dnsServerOptions.UdpPort);
 
             _udpClient = new UdpClient(listenEndpoint);
 
             _logger.LogInformation("UDP DNS listener started on {Address}:{Port}",
-                _dnsServerOptions.ListenIpv4, _dnsServerOptions.UdpPort);
+                dnsServerOptions.ListenIpv4, dnsServerOptions.UdpPort);
 
             while (!stoppingToken.IsCancellationRequested)
             {

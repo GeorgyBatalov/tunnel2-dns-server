@@ -9,11 +9,23 @@ builder.Services.Configure<LegacyModeOptions>(builder.Configuration.GetSection("
 builder.Services.Configure<EntryIpAddressMapOptions>(builder.Configuration.GetSection("EntryIpAddressMapOptions"));
 builder.Services.Configure<AcmeOptions>(builder.Configuration.GetSection("AcmeOptions"));
 builder.Services.Configure<DnsVaultOptions>(builder.Configuration.GetSection("VaultOptions"));
+builder.Services.Configure<SessionCacheOptions>(builder.Configuration.GetSection("SessionCacheOptions"));
+
+// Register memory cache
+builder.Services.AddMemoryCache(options =>
+{
+    SessionCacheOptions cacheOptions = builder.Configuration
+        .GetSection("SessionCacheOptions")
+        .Get<SessionCacheOptions>() ?? new SessionCacheOptions();
+
+    options.SizeLimit = cacheOptions.MaxCachedSessions;
+});
 
 // Register services
 // Use VaultBackedAcmeTokensProvider which reads from Vault (if enabled) with fallback to appsettings.json
 builder.Services.AddSingleton<IAcmeTokensProvider, VaultBackedAcmeTokensProvider>();
-builder.Services.AddSingleton<DnsRequestHandler>();
+builder.Services.AddSingleton<ISessionIpAddressCache, SessionIpAddressCache>();
+builder.Services.AddSingleton<MakaretuDnsRequestHandler>();
 builder.Services.AddHostedService<UdpDnsListener>();
 
 // Configure Kestrel to listen only on health check port
