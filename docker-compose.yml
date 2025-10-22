@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  dns-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tunnel2-dns-server
+    restart: unless-stopped
+
+    # Use host network mode for easier DNS port binding
+    # Alternative: use ports mapping with appropriate capabilities
+    network_mode: "host"
+
+    # If not using host network, uncomment this section:
+    # ports:
+    #   - "53:53/udp"
+    #   - "53:53/tcp"
+    #   - "8080:8080/tcp"
+    # cap_add:
+    #   - NET_BIND_SERVICE
+
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
+
+      # Override DNS server options via environment
+      - DnsServerOptions__ListenIpv4=0.0.0.0
+      - DnsServerOptions__UdpPort=53
+      - DnsServerOptions__TcpPort=53
+
+      # Legacy mode configuration
+      - LegacyModeOptions__IsEnabled=true
+      - LegacyModeOptions__LegacyStaticIpAddress=203.0.113.42
+
+      # Entry IP mapping for new mode
+      - EntryIpAddressMapOptions__Map__e1=203.0.113.10
+      - EntryIpAddressMapOptions__Map__e2=203.0.113.11
+
+    volumes:
+      # Optional: mount custom configuration
+      # - ./appsettings.Production.json:/app/appsettings.Production.json:ro
+      - /etc/localtime:/etc/localtime:ro
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
