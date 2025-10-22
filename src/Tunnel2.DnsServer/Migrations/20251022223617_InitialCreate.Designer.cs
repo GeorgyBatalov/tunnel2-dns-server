@@ -9,10 +9,10 @@ using Tunnel2.DnsServer.Data;
 
 #nullable disable
 
-namespace Tunnel2.DnsServer.Data.Migrations
+namespace Tunnel2.DnsServer.Migrations
 {
     [DbContext(typeof(DnsServerDbContext))]
-    [Migration("20251022213939_InitialCreate")]
+    [Migration("20251022223617_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -25,33 +25,35 @@ namespace Tunnel2.DnsServer.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Tunnel2.DnsServer.Data.ProxyEntry", b =>
+            modelBuilder.Entity("Tunnel2.DnsServer.Data.Session", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("SessionId")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Hostname")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("IpAddress")
                         .IsRequired()
                         .HasMaxLength(45)
-                        .HasColumnType("character varying(45)")
-                        .HasColumnName("ip_address");
+                        .HasColumnType("character varying(45)");
 
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
+                    b.HasKey("SessionId");
 
-                    b.HasKey("Id");
+                    b.HasIndex("ExpiresAt");
 
-                    b.HasIndex("IpAddress")
-                        .HasDatabaseName("ix_proxy_entries_ip_address");
+                    b.HasIndex("Hostname");
 
-                    b.ToTable("proxy_entries", (string)null);
+                    b.ToTable("Sessions");
                 });
 #pragma warning restore 612, 618
         }

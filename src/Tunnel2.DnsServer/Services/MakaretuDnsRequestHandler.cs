@@ -17,7 +17,7 @@ public sealed class MakaretuDnsRequestHandler
     private readonly IOptionsMonitor<EntryIpAddressMapOptions> _entryIpAddressMapOptionsMonitor;
     private readonly IAcmeTokensProvider _acmeTokensProvider;
     private readonly ISessionIpAddressCache _sessionIpAddressCache;
-    private readonly IProxyEntryRepository _proxyEntryRepository;
+    private readonly ISessionRepository _sessionRepository;
     private readonly IDomainPatternMatcher _legacyMatcher;
     private readonly IDomainPatternMatcher _newMatcher;
 
@@ -28,7 +28,7 @@ public sealed class MakaretuDnsRequestHandler
         IOptionsMonitor<EntryIpAddressMapOptions> entryIpAddressMapOptionsMonitor,
         IAcmeTokensProvider acmeTokensProvider,
         ISessionIpAddressCache sessionIpAddressCache,
-        IProxyEntryRepository proxyEntryRepository)
+        ISessionRepository sessionRepository)
     {
         _logger = logger;
         _dnsServerOptionsMonitor = dnsServerOptionsMonitor;
@@ -36,7 +36,7 @@ public sealed class MakaretuDnsRequestHandler
         _entryIpAddressMapOptionsMonitor = entryIpAddressMapOptionsMonitor;
         _acmeTokensProvider = acmeTokensProvider;
         _sessionIpAddressCache = sessionIpAddressCache;
-        _proxyEntryRepository = proxyEntryRepository;
+        _sessionRepository = sessionRepository;
         _legacyMatcher = new LegacyDomainPatternMatcher();
         _newMatcher = new NewDomainPatternMatcher();
     }
@@ -163,30 +163,27 @@ public sealed class MakaretuDnsRequestHandler
                     return;
                 }
 
-                // Try to parse ProxyEntryId as GUID for database lookup
-                if (Guid.TryParse(newMatch.ProxyEntryId, out Guid proxyEntryGuid))
+                // Query PostgreSQL database by hostname
+                string hostnameToSearch = $"{newMatch.NewAddress}-{newMatch.ProxyEntryId}";
+                Data.Session? session = await _sessionRepository.GetByHostnameAsync(hostnameToSearch, cancellationToken);
+
+                if (session != null)
                 {
-                    // Query PostgreSQL database
-                    string? ipAddressFromDb = await _proxyEntryRepository.GetIpAddressAsync(proxyEntryGuid, cancellationToken);
+                    _logger.LogInformation("Resolved IP from database for hostname {Hostname}: {IpAddress}",
+                        hostnameToSearch, session.IpAddress);
 
-                    if (ipAddressFromDb != null)
+                    // Cache the IP address with sliding expiration
+                    _sessionIpAddressCache.SetIpAddress(sessionKey, session.IpAddress);
+
+                    ARecord aRecord = new ARecord
                     {
-                        _logger.LogInformation("Resolved IP from database for proxy entry {ProxyEntryId}: {IpAddress}",
-                            newMatch.ProxyEntryId, ipAddressFromDb);
+                        Name = question.Name,
+                        Address = IPAddress.Parse(session.IpAddress),
+                        TTL = TimeSpan.FromSeconds(dnsServerOptions.ResponseTtlSeconds.NewA)
+                    };
 
-                        // Cache the IP address with sliding expiration
-                        _sessionIpAddressCache.SetIpAddress(sessionKey, ipAddressFromDb);
-
-                        ARecord aRecord = new ARecord
-                        {
-                            Name = question.Name,
-                            Address = IPAddress.Parse(ipAddressFromDb),
-                            TTL = TimeSpan.FromSeconds(dnsServerOptions.ResponseTtlSeconds.NewA)
-                        };
-
-                        response.Answers.Add(aRecord);
-                        return;
-                    }
+                    response.Answers.Add(aRecord);
+                    return;
                 }
 
                 // Fallback to configuration map (for backwards compatibility and testing)

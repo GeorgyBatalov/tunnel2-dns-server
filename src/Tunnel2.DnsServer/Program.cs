@@ -38,9 +38,10 @@ builder.Services.AddDbContextFactory<DnsServerDbContext>((serviceProvider, optio
 // Use VaultBackedAcmeTokensProvider which reads from Vault (if enabled) with fallback to appsettings.json
 builder.Services.AddSingleton<IAcmeTokensProvider, VaultBackedAcmeTokensProvider>();
 builder.Services.AddSingleton<ISessionIpAddressCache, SessionIpAddressCache>();
-builder.Services.AddSingleton<IProxyEntryRepository, ProxyEntryRepository>();
+builder.Services.AddSingleton<ISessionRepository, SessionRepository>();
 builder.Services.AddSingleton<MakaretuDnsRequestHandler>();
 builder.Services.AddHostedService<UdpDnsListener>();
+builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 
 // Configure Kestrel to listen only on health check port
 builder.WebHost.ConfigureKestrel(options =>
@@ -50,11 +51,26 @@ builder.WebHost.ConfigureKestrel(options =>
 
 WebApplication app = builder.Build();
 
+// Apply database migrations on startup
+ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
+try
+{
+    logger.LogInformation("Applying database migrations...");
+    IDbContextFactory<DnsServerDbContext> dbContextFactory = app.Services.GetRequiredService<IDbContextFactory<DnsServerDbContext>>();
+    await using DnsServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+    await dbContext.Database.MigrateAsync();
+    logger.LogInformation("Database migrations applied successfully");
+}
+catch (Exception ex)
+{
+    logger.LogError(ex, "Failed to apply database migrations");
+    throw;
+}
+
 // Health check endpoint
 app.MapGet("/healthz", () => Results.Ok(new { status = "healthy", service = "tunnel2-dns-server" }));
 
 // Log startup configuration
-ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("Tunnel2.DnsServer started");
 
 app.Run();

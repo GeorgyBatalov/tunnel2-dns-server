@@ -12,40 +12,22 @@ public sealed class DnsServerDbContext : DbContext
     }
 
     /// <summary>
-    /// Proxy entries table.
+    /// Active tunnel sessions table.
     /// </summary>
-    public DbSet<ProxyEntry> ProxyEntries => Set<ProxyEntry>();
+    public DbSet<Session> Sessions => Set<Session>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Configure ProxyEntry entity
-        modelBuilder.Entity<ProxyEntry>(entity =>
+        // Configure Session entity
+        modelBuilder.Entity<Session>(entity =>
         {
-            entity.ToTable("proxy_entries");
-            entity.HasKey(e => e.Id);
+            // Index on hostname for fast DNS lookups
+            entity.HasIndex(e => e.Hostname);
 
-            entity.Property(e => e.Id)
-                .HasColumnName("id")
-                .IsRequired();
-
-            entity.Property(e => e.IpAddress)
-                .HasColumnName("ip_address")
-                .HasMaxLength(45)
-                .IsRequired();
-
-            entity.Property(e => e.CreatedAt)
-                .HasColumnName("created_at")
-                .IsRequired();
-
-            entity.Property(e => e.UpdatedAt)
-                .HasColumnName("updated_at")
-                .IsRequired();
-
-            // Index on IP address for faster lookups
-            entity.HasIndex(e => e.IpAddress)
-                .HasDatabaseName("ix_proxy_entries_ip_address");
+            // Index on expires_at for efficient cleanup by background worker
+            entity.HasIndex(e => e.ExpiresAt);
         });
     }
 }
