@@ -8,14 +8,14 @@ namespace Tunnel2.DnsServer.Services;
 /// </summary>
 public sealed class SessionRepository : ISessionRepository
 {
-    private readonly IDbContextFactory<DnsServerDbContext> _dbContextFactory;
+    private readonly DnsServerDbContext _dbContext;
     private readonly ILogger<SessionRepository> _logger;
 
     public SessionRepository(
-        IDbContextFactory<DnsServerDbContext> dbContextFactory,
+        DnsServerDbContext dbContext,
         ILogger<SessionRepository> logger)
     {
-        _dbContextFactory = dbContextFactory;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -23,9 +23,7 @@ public sealed class SessionRepository : ISessionRepository
     {
         try
         {
-            await using DnsServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-            Session? session = await dbContext.Sessions
+            Session? session = await _dbContext.Sessions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Hostname == hostname, cancellationToken);
 
@@ -52,18 +50,16 @@ public sealed class SessionRepository : ISessionRepository
     {
         try
         {
-            await using DnsServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-            Session? existingSession = await dbContext.Sessions
+            Session? existingSession = await _dbContext.Sessions
                 .FirstOrDefaultAsync(s => s.SessionId == session.SessionId, cancellationToken);
 
             if (existingSession != null)
             {
-                dbContext.Sessions.Remove(existingSession);
+                _dbContext.Sessions.Remove(existingSession);
             }
 
-            await dbContext.Sessions.AddAsync(session, cancellationToken);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.Sessions.AddAsync(session, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Session {SessionId} with hostname {Hostname} saved to database",
                 session.SessionId, session.Hostname);
@@ -79,19 +75,19 @@ public sealed class SessionRepository : ISessionRepository
     {
         try
         {
-            await using DnsServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
             DateTime now = DateTime.UtcNow;
-            int deletedCount = await dbContext.Sessions
+            List<Session> expiredSessions = await _dbContext.Sessions
                 .Where(s => s.ExpiresAt < now)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
 
-            if (deletedCount > 0)
+            if (expiredSessions.Count > 0)
             {
-                _logger.LogInformation("Deleted {Count} expired sessions from database", deletedCount);
+                _dbContext.Sessions.RemoveRange(expiredSessions);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Deleted {Count} expired sessions from database", expiredSessions.Count);
             }
 
-            return deletedCount;
+            return expiredSessions.Count;
         }
         catch (Exception exception)
         {

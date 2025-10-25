@@ -27,12 +27,12 @@ builder.Services.AddMemoryCache(options =>
 
 // Register database context with connection string provider
 builder.Services.AddSingleton<IConnectionStringProvider, VaultBackedConnectionStringProvider>();
-builder.Services.AddDbContextFactory<DnsServerDbContext>((serviceProvider, options) =>
+builder.Services.AddDbContext<DnsServerDbContext>((serviceProvider, options) =>
 {
     IConnectionStringProvider connectionStringProvider = serviceProvider.GetRequiredService<IConnectionStringProvider>();
     string connectionString = connectionStringProvider.GetConnectionString();
     options.UseNpgsql(connectionString);
-});
+}, ServiceLifetime.Singleton);
 
 // Register services
 // Use VaultBackedAcmeTokensProvider which reads from Vault (if enabled) with fallback to appsettings.json
@@ -56,8 +56,7 @@ ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
 try
 {
     logger.LogInformation("Applying database migrations...");
-    IDbContextFactory<DnsServerDbContext> dbContextFactory = app.Services.GetRequiredService<IDbContextFactory<DnsServerDbContext>>();
-    await using DnsServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+    DnsServerDbContext dbContext = app.Services.GetRequiredService<DnsServerDbContext>();
     await dbContext.Database.MigrateAsync();
     logger.LogInformation("Database migrations applied successfully");
 }

@@ -10,7 +10,6 @@ namespace Tunnel2.DnsServer.Tests;
 public class SessionRepositoryTests : IDisposable
 {
     private readonly DnsServerDbContext _dbContext;
-    private readonly IDbContextFactory<DnsServerDbContext> _dbContextFactory;
     private readonly SessionRepository _repository;
 
     public SessionRepositoryTests()
@@ -21,13 +20,8 @@ public class SessionRepositoryTests : IDisposable
 
         _dbContext = new DnsServerDbContext(options);
 
-        var mockFactory = new Mock<IDbContextFactory<DnsServerDbContext>>();
-        mockFactory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_dbContext);
-        _dbContextFactory = mockFactory.Object;
-
         var mockLogger = new Mock<ILogger<SessionRepository>>();
-        _repository = new SessionRepository(_dbContextFactory, mockLogger.Object);
+        _repository = new SessionRepository(_dbContext, mockLogger.Object);
     }
 
     public void Dispose()
