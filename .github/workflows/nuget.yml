@@ -1,0 +1,47 @@
+name: Publish packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-packages:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+
+      - name: Verify .NET SDK version
+        run: dotnet --info
+
+      - name: Authenticate to GitHub Packages
+        run: dotnet nuget add source -u GeorgyBatalov -p ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text -n github "https://nuget.pkg.github.com/GeorgyBatalov/index.json"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Set packages versions
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Find and pack projects with GeneratePackageOnBuild
+        run: |
+          mkdir -p nupkgs
+          for csproj in $(find src -name "*.csproj" -exec grep -l "<GeneratePackageOnBuild>true</GeneratePackageOnBuild>" {} \;); do
+            echo "Packing $csproj"
+            dotnet pack "$csproj" --no-build --output nupkgs -c Release -p:PackageVersion=${{ env.VERSION }}
+          done
+
+      - name: Push packages
+        run: dotnet nuget push ./nupkgs/*.nupkg --source github --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate --no-symbols
