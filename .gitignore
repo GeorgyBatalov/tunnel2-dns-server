@@ -66,3 +66,6 @@ artifacts/
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# GitHub token for local Docker builds (BuildKit secrets)
+.github_token

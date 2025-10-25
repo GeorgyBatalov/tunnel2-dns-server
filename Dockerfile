@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /source
@@ -8,20 +10,19 @@ COPY src/Tunnel2.DomainNames/Tunnel2.DomainNames.csproj src/Tunnel2.DomainNames/
 COPY src/Tunnel2.DnsServer/Tunnel2.DnsServer.csproj src/Tunnel2.DnsServer/
 COPY tests/Tunnel2.DnsServer.Tests/Tunnel2.DnsServer.Tests.csproj tests/Tunnel2.DnsServer.Tests/
 
-# Build arg for GitHub token
-ARG GITHUB_TOKEN
-
-# Restore dependencies with GitHub Packages authentication
-RUN dotnet nuget add source -u GeorgyBatalov -p ${GITHUB_TOKEN} --store-password-in-clear-text -n github "https://nuget.pkg.github.com/GeorgyBatalov/index.json"
-RUN dotnet restore
-
 # Copy all source code
 COPY src/ src/
 COPY tests/ tests/
 
-# Build and publish
+# Restore, build and publish in single RUN to preserve NuGet source config
 WORKDIR /source/src/Tunnel2.DnsServer
-RUN dotnet publish -c Release -o /app --no-restore
+RUN --mount=type=secret,id=github_token \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token) && \
+    dotnet nuget add source -u GeorgyBatalov -p ${GITHUB_TOKEN} \
+    --store-password-in-clear-text -n github \
+    "https://nuget.pkg.github.com/GeorgyBatalov/index.json" && \
+    dotnet restore && \
+    dotnet publish -c Release -o /app --no-restore
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
