@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Tunnel2.DnsServer.Configuration;
 using Tunnel2.DnsServer.Data;
+using Tunnel2.DnsServer.EventHandlers;
+using Tunnel2.DnsServer.MessageBroker;
 using Tunnel2.DnsServer.Services;
+using Tunnel2.DnsServer.Workers;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +17,7 @@ builder.Services.Configure<DnsVaultOptions>(builder.Configuration.GetSection("Va
 builder.Services.Configure<SessionCacheOptions>(builder.Configuration.GetSection("SessionCacheOptions"));
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection("DatabaseOptions"));
 builder.Services.Configure<DatabaseVaultOptions>(builder.Configuration.GetSection("DatabaseVaultOptions"));
+builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
 
 // Register memory cache
 builder.Services.AddMemoryCache(options =>
@@ -42,6 +46,12 @@ builder.Services.AddSingleton<ISessionRepository, SessionRepository>();
 builder.Services.AddSingleton<MakaretuDnsRequestHandler>();
 builder.Services.AddHostedService<UdpDnsListener>();
 builder.Services.AddHostedService<SessionCleanupBackgroundService>();
+
+// Register RabbitMQ infrastructure
+builder.Services.AddSingleton<IRabbitChannelFactory, SimpleRabbitChannelFactory>();
+builder.Services.AddSingleton<SessionCreatedHandler>();
+builder.Services.AddSingleton<SessionClosedHandler>();
+builder.Services.AddHostedService<SessionEventsConsumer>();
 
 // Configure Kestrel to listen only on health check port
 builder.WebHost.ConfigureKestrel(options =>

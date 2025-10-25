@@ -17,10 +17,11 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
     <PackageReference Include="VaultSharp" Version="1.17.5.1" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Tunnel2.DomainNames\Tunnel2.DomainNames.csproj" />
+    <ProjectReference Include="..\..\..\tunnel2-server\src\Tunnel2.TunnelServer.Infrastructure.Contracts\Tunnel2.TunnelServer.Infrastructure.Contracts.csproj" />
   </ItemGroup>
 </Project>
