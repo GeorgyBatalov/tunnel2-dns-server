@@ -1,71 +1,8 @@
-# Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
-x64/
-x86/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-
-# Visual Studio cache/options
+**/bin/Debug/**
+**/bin/Release/**
+**/obj/**
 .vs/
-.vscode/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# JetBrains Rider
 .idea/
-*.sln.iml
-
-# User-specific files
-*.rsuser
-
-# Build results
-[Tt]est[Rr]esult*/
-[Bb]uild[Ll]og.*
-
-# .NET Core
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-# NuGet Packages
-*.nupkg
-*.snupkg
-**/packages/*
-!**/packages/build/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Thumbnails
-._*
-
-# Files that might appear in the root of a volume
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# GitHub token for local Docker builds (BuildKit secrets)
+.vscode/
 .github_token
+.DS_Store
